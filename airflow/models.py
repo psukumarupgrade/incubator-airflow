@@ -596,6 +596,29 @@ class Connection(Base, LoggingMixin):
         self.password = temp_uri.password
         self.port = temp_uri.port
 
+    def _callback_for_password(self, password):
+        """
+        Provides a way to have a callback function to obtain password.
+        This is useful in situations where passwords are stored in a central system such as Hashicorp vault and
+        need to be accessed through a callback function.
+        The password in the connection in this case should be represented like
+        callback({"module":<module name>, "function":<function>, "args": [<list of args], "kawrgs": {<list of kwargs})
+        :param password: password text
+        :return: evaluated password.
+        """
+        password_text = password
+        callback_pattern = re.compile("callback(.*)")
+        if callback_pattern.match(password_text):
+            password_text = re.sub("^callback\(", "", password_text)
+            password_text = re.sub("\)$", "", password_text)
+            xjson = json.loads(password_text)
+            module = __import__(xjson["module"])
+            method = xjson["function"]
+            args = xjson["args"] if xjson["args"] else None
+            kwargs = xjson["kwargs"] if "kwargs" in xjson else {}
+            password_text = getattr(module, method)(*args, **kwargs)
+        return password_text
+
     def get_password(self):
         if self._password and self.is_encrypted:
             try:
@@ -604,9 +627,9 @@ class Connection(Base, LoggingMixin):
                 raise AirflowException(
                     "Can't decrypt encrypted password for login={}, \
                     FERNET_KEY configuration is missing".format(self.login))
-            return fernet.decrypt(bytes(self._password, 'utf-8')).decode()
+            return self._callback_for_password(fernet.decrypt(bytes(self._password, 'utf-8')).decode())
         else:
-            return self._password
+            return self._callback_for_password(self._password)
 
     def set_password(self, value):
         if value:

@@ -1597,3 +1597,14 @@ class ConnectionTest(unittest.TestCase):
         mock_get.return_value = 'dGVzdA=='
         test_connection = Connection(extra='testextra')
         self.assertEqual(test_connection.extra, 'testextra')
+
+    @patch.object(configuration, 'get')
+    def test_callback_for_password(self, mock_get):
+        """
+        Tests callback for password
+        """
+        mock_get.return_value = 'test'
+        test_connection = Connection(conn_id='test')
+        expected_output = '0xff'
+        password = 'callback({"module":"builtins", "function":"hex", "args": [255]})'
+        self.assertEqual(test_connection._callback_for_password(password), expected_output)
